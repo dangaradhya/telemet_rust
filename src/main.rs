@@ -1,32 +1,44 @@
-// We must explicitly import the File System (fs) module from the standard library
-use std::fs;
+// We are replacing 'std::fs' with 'tokio::fs' for non-blocking file access.
+use tokio::fs::File;
+// We need AsyncBufReadExt to read files line-by-line asynchronously.
+use tokio::io::{AsyncBufReadExt, BufReader};
 
-fn main() {
-    // PRINCIPLE 1: Immutability by Default
-    // In Rust, variables cannot be changed once assigned unless you use 'mut'.
-    // We are binding the string literal to 'log_path'. 
+// PRINCIPLE 1: The Tokio Macro
+// A standard Rust program must start with a synchronous 'main' function.
+// The #[tokio::main] macro automatically writes a hidden synchronous main function
+// that boots up the Tokio runtime, which then executes our async code.
+#[tokio::main]
+async fn main() {
     let log_path = "system.log";
+    println!("--- TelemetRust Async Agent Booting ---");
 
-    // PRINCIPLE 2: Error Handling without Exceptions
-    // Rust doesn't use try/catch blocks. Functions that can fail return a 'Result' type.
-    // .expect() says: "If this Result is an error, crash the program with this message. 
-    // If it's successful, give me the file contents."
-    let file_contents = fs::read_to_string(log_path)
-        .expect("CRITICAL: Failed to read the log file. Check the path.");
+    // PRINCIPLE 2: Async File Opening
+    // File::open returns a 'Future'. 
+    // We add '.await' to pause here until the OS actually opens the file.
+    // If it fails, '.expect()' crashes the program gracefully.
+    let file = File::open(log_path).await.expect("CRITICAL: Failed to open system.log");
 
-    println!("--- TelemetRust Agent Initialized ---");
+    // PRINCIPLE 3: Buffered Reading
+    // Reading directly from a file byte-by-byte is incredibly slow.
+    // BufReader grabs a large chunk of the file into RAM all at once.
+    let reader = BufReader::new(file);
 
-    // PRINCIPLE 3: Borrowing and Iteration
-    // file_contents.lines() creates an iterator over the string.
-    for line in file_contents.lines() {
-        // We use the '&' symbol here. This is a "Reference". 
-        // It means we are "borrowing" the line to look at it, but we don't "own" it.
-        // This is how Rust achieves memory safety without a garbage collector.
+    // .lines() creates an asynchronous stream that yields one line at a time.
+    let mut lines = reader.lines();
+
+    // PRINCIPLE 4: The Async Loop
+    // Because we are fetching data asynchronously, we can't use a standard 'for' loop.
+    // We use a 'while let' loop. It asks: "Wait for the next line. If it exists, bind it to 'line'."
+    while let Some(line) = lines.next_line().await.expect("Error reading line") {
+        
         if line.contains("[ERROR]") {
-            // The ! in println! means it's a "Macro" (code that writes other code), not a function.
-            println!("URGENT ALARM: {}", line);
+            // In a real system, this is where we would asynchronously fire a network packet
+            // to our central server without stopping the file reading process.
+            println!("URGENT ALARM (Async): {}", line);
         } else {
-            println!("Processed: {}", line);
+            println!("Processed (Async): {}", line);
         }
     }
+
+    println!("--- End of File Reached ---");
 }
