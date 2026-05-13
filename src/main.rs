@@ -1,44 +1,70 @@
-// We are replacing 'std::fs' with 'tokio::fs' for non-blocking file access.
 use tokio::fs::File;
-// We need AsyncBufReadExt to read files line-by-line asynchronously.
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::time::{sleep, Duration};
 
-// PRINCIPLE 1: The Tokio Macro
-// A standard Rust program must start with a synchronous 'main' function.
-// The #[tokio::main] macro automatically writes a hidden synchronous main function
-// that boots up the Tokio runtime, which then executes our async code.
+// 1. Define our strongly-typed Data Structure
+#[derive(serde::Serialize)]
+struct LogPayload {
+    timestamp: String,
+    level: String,
+    message: String,
+}
+
 #[tokio::main]
 async fn main() {
     let log_path = "system.log";
-    println!("--- TelemetRust Async Agent Booting ---");
+    println!("--- TelemetRust Live Agent Booting ---");
+    println!("Watching {} for real-time events...", log_path);
 
-    // PRINCIPLE 2: Async File Opening
-    // File::open returns a 'Future'. 
-    // We add '.await' to pause here until the OS actually opens the file.
-    // If it fails, '.expect()' crashes the program gracefully.
     let file = File::open(log_path).await.expect("CRITICAL: Failed to open system.log");
+    let mut reader = BufReader::new(file);
+    
+    // We allocate a single String buffer in memory once. 
+    // We will clear and reuse this exact memory address for every line, 
+    // which prevents the garbage-collection lag found in languages like Python.
+    let mut line_buffer = String::new();
 
-    // PRINCIPLE 3: Buffered Reading
-    // Reading directly from a file byte-by-byte is incredibly slow.
-    // BufReader grabs a large chunk of the file into RAM all at once.
-    let reader = BufReader::new(file);
+    // 2. The Infinite Agent Loop
+    loop {
+        line_buffer.clear(); // Empty the buffer without freeing the memory capacity
 
-    // .lines() creates an asynchronous stream that yields one line at a time.
-    let mut lines = reader.lines();
+        // Read bytes directly into our buffer
+        let bytes_read = reader.read_line(&mut line_buffer).await.expect("IO Error");
 
-    // PRINCIPLE 4: The Async Loop
-    // Because we are fetching data asynchronously, we can't use a standard 'for' loop.
-    // We use a 'while let' loop. It asks: "Wait for the next line. If it exists, bind it to 'line'."
-    while let Some(line) = lines.next_line().await.expect("Error reading line") {
-        
-        if line.contains("[ERROR]") {
-            // In a real system, this is where we would asynchronously fire a network packet
-            // to our central server without stopping the file reading process.
-            println!("URGENT ALARM (Async): {}", line);
-        } else {
-            println!("Processed (Async): {}", line);
+        if bytes_read == 0 {
+            // EOF (End of File) Reached. 
+            // Yield the CPU for 100ms before checking for new data.
+            // This ensures our background agent uses ~0.01% CPU while waiting.
+            sleep(Duration::from_millis(100)).await;
+            continue; // Skip the rest of the loop and start over
         }
-    }
 
-    println!("--- End of File Reached ---");
+        // 3. Parsing and Structuring the Data
+        // Remove the trailing newline character (\n)
+        let clean_line = line_buffer.trim(); 
+
+        // Basic parser: Check if the line starts with a severity bracket
+        let (level, message) = if clean_line.starts_with("[ERROR]") {
+            ("ERROR", &clean_line[7..])
+        } else if clean_line.starts_with("[WARN]") {
+            ("WARN", &clean_line[6..])
+        } else if clean_line.starts_with("[INFO]") {
+            ("INFO", &clean_line[6..])
+        } else {
+            ("UNKNOWN", clean_line)
+        };
+
+        // 4. Instantiate our Struct
+        let payload = LogPayload {
+            // Generate an exact ISO 8601 timestamp at the moment of reading
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            level: level.to_string(),
+            message: message.trim().to_string(),
+        };
+
+        // 5. Serialize to JSON
+        let json_output = serde_json::to_string(&payload).expect("Failed to serialize");
+
+        println!("Transmitting: {}", json_output);
+    }
 }

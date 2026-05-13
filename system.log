@@ -1,3 +1,4 @@
 [INFO] System booted successfully.
 [WARN] Memory utilization approaching 85%.
-[ERROR] Failed to connect to telemetry database.
+[ERROR] Failed to connect to telemetry database.[ERROR] Battery management system voltage drop detected
+FATAL CRASH core dump initiated at memory address 0x00FF
