@@ -6,3 +6,4 @@ FATAL CRASH core dump initiated at memory address 0x00FF
 [WARN] CPU temperature elevated to 88C
 [ERROR] CPU temperture above threshold
 [ERROR] High voltage interlock loop breached
+[ERROR] Kernel panic in thread 4
