@@ -1,8 +1,8 @@
 use tokio::fs::File;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader, AsyncWriteExt}; 
+use tokio::net::TcpStream; 
 use tokio::time::{sleep, Duration};
 
-// 1. Define our strongly-typed Data Structure
 #[derive(serde::Serialize)]
 struct LogPayload {
     timestamp: String,
@@ -13,37 +13,40 @@ struct LogPayload {
 #[tokio::main]
 async fn main() {
     let log_path = "system.log";
+    // 1. Define our Central Server Address (Localhost for testing, port 8080)
+    let server_address = "127.0.0.1:8080"; 
+    
     println!("--- TelemetRust Live Agent Booting ---");
-    println!("Watching {} for real-time events...", log_path);
+    println!("Attempting to connect to Central Aggregator at {}...", server_address);
+
+    // 2. The Network Handshake (Resilient Design)
+    // We try to connect to the server. 'match' handles the Success (Ok) or Failure (Err) gracefully.
+    let mut network_stream = match TcpStream::connect(server_address).await {
+        Ok(stream) => {
+            println!("SUCCESS: TCP Socket established.");
+            Some(stream) // Store the active stream
+        }
+        Err(e) => {
+            // If the server is offline, we DO NOT crash. We log a warning and continue.
+            println!("WARN: Aggregator offline ({}). Running in Local-Only mode.", e);
+            None // No stream available
+        }
+    };
 
     let file = File::open(log_path).await.expect("CRITICAL: Failed to open system.log");
     let mut reader = BufReader::new(file);
-    
-    // We allocate a single String buffer in memory once. 
-    // We will clear and reuse this exact memory address for every line, 
-    // which prevents the garbage-collection lag found in languages like Python.
     let mut line_buffer = String::new();
 
-    // 2. The Infinite Agent Loop
     loop {
-        line_buffer.clear(); // Empty the buffer without freeing the memory capacity
-
-        // Read bytes directly into our buffer
+        line_buffer.clear();
         let bytes_read = reader.read_line(&mut line_buffer).await.expect("IO Error");
 
         if bytes_read == 0 {
-            // EOF (End of File) Reached. 
-            // Yield the CPU for 100ms before checking for new data.
-            // This ensures our background agent uses ~0.01% CPU while waiting.
             sleep(Duration::from_millis(100)).await;
-            continue; // Skip the rest of the loop and start over
+            continue;
         }
 
-        // 3. Parsing and Structuring the Data
-        // Remove the trailing newline character (\n)
         let clean_line = line_buffer.trim(); 
-
-        // Basic parser: Check if the line starts with a severity bracket
         let (level, message) = if clean_line.starts_with("[ERROR]") {
             ("ERROR", &clean_line[7..])
         } else if clean_line.starts_with("[WARN]") {
@@ -54,17 +57,33 @@ async fn main() {
             ("UNKNOWN", clean_line)
         };
 
-        // 4. Instantiate our Struct
         let payload = LogPayload {
-            // Generate an exact ISO 8601 timestamp at the moment of reading
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: chrono::Utc::now().to_rfc3339(), 
             level: level.to_string(),
             message: message.trim().to_string(),
         };
 
-        // 5. Serialize to JSON
         let json_output = serde_json::to_string(&payload).expect("Failed to serialize");
 
-        println!("Transmitting: {}", json_output);
+        // 3. The Transmission Logic
+        // We append a newline character (\n) so the receiving server knows where one JSON object ends and the next begins.
+        let network_payload = format!("{}\n", json_output);
+
+        // 4. Routing the Data
+        // 'if let Some' checks: Do we have an active network connection?
+        if let Some(ref mut stream) = network_stream {
+            
+            // If yes, convert the string to raw bytes and blast it over the TCP socket.
+            match stream.write_all(network_payload.as_bytes()).await {
+                Ok(_) => println!("Transmitted (TCP): {}", json_output),
+                Err(e) => {
+                    println!("NETWORK FAULT: Connection lost. Error: {}", e);
+                    // In a production system, we would trigger a reconnect sequence here.
+                }
+            }
+        } else {
+            // If the network is down, we fall back to printing it locally.
+            println!("Local Store (Offline): {}", json_output);
+        }
     }
 }
