@@ -1,9 +1,4 @@
 [INFO] System booted successfully.
 [WARN] Memory utilization approaching 85%.
-[ERROR] Failed to connect to telemetry database.
-[ERROR] Battery management system voltage drop detected
 FATAL CRASH core dump initiated at memory address 0x00FF
-[WARN] CPU temperature elevated to 88C
-[ERROR] CPU temperture above threshold
-[ERROR] High voltage interlock loop breached
-[ERROR] Kernel panic in thread 4
+[ERROR] Battery cell temperature critical

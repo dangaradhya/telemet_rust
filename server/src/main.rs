@@ -16,24 +16,31 @@ struct LogPayload {
     message: String,
 }
 
-// Used to parse the JSON response from the LLM
+// Used to parse the JSON response from the Gemini API
 #[derive(Deserialize, Debug)]
-struct OpenAiResponse {
-    choices: Vec<Choice>,
+struct GeminiResponse {
+    candidates: Vec<Candidate>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Choice {
-    message: OpenAiMessage,
+struct Candidate {
+    content: GeminiContent,
 }
 
 #[derive(Deserialize, Debug)]
-struct OpenAiMessage {
-    content: String,
+struct GeminiContent {
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(Deserialize, Debug)]
+struct GeminiPart {
+    text: String,
 }
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     println!("--- TelemetRust Aggregator Booting ---");
 
     // 1. Database Initialization
@@ -56,14 +63,22 @@ async fn main() {
         .expect("Failed to connect to SQLite");
 
     // 3. Automated Migrations (Schema Definition)
+    // Create the logs table first
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
             level TEXT NOT NULL,
             message TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS triage_reports (
+        );"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create logs table");
+
+    // Create the triage_reports table SECOND
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS triage_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             log_id INTEGER NOT NULL,
             analysis TEXT NOT NULL,
@@ -72,7 +87,7 @@ async fn main() {
     )
     .execute(&pool)
     .await
-    .expect("Failed to create database tables");
+    .expect("Failed to create triage_reports table");
 
     println!("Database tables connected and schema verified.");
 
@@ -88,12 +103,12 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-// The HTTP Handler for Ingesting Logs
+// 6. The HTTP Handler for Ingesting Logs
 async fn ingest_log(
     State(pool): State<SqlitePool>,
     Json(payload): Json<LogPayload>,
 ) {
-    // 1. Save the incoming log to the database
+    // Save the incoming log to the database
     let result = sqlx::query(
         "INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)"
     )
@@ -103,7 +118,7 @@ async fn ingest_log(
     .execute(&pool)
     .await;
 
-    // 2. Log the result to the console for visibility
+    // Log the result to the console for visibility
     match result {
         Ok(db_result) => {
             println!("DB SAVED -> [{}] {}: {}", payload.timestamp, payload.level, payload.message);
@@ -129,55 +144,77 @@ async fn ingest_log(
     }
 }
 
-// The Fire-and-Forget AI Worker
+// 7. The Fire-and-Forget AI Worker 
 async fn run_ai_triage(pool: SqlitePool, log_id: i64, error_message: String) {
     println!(">> [AI Worker Started] Triaging Log ID: {}", log_id);
 
     // Grab the API key from your Linux environment variables
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
-        println!(">> [AI Worker Aborted] No OPENAI_API_KEY found in environment.");
+        println!(">> [AI Worker Aborted] No GEMINI_API_KEY found in environment.");
         return;
     }
 
-    // Construct the prompt for the LLM. This is where you can get creative with how you want to instruct the AI to analyze the error message.
+    // Construct the prompt for the Gemini API. This is where you can get creative with how you ask the AI to analyze the error message.
     let client = reqwest::Client::new();
     let prompt = format!(
         "You are an expert embedded systems engineer. Analyze this system log error and provide a 2-sentence probable root cause and a 1-sentence recommended fix. Error: '{}'",
         error_message
     );
 
-    // The body of the request to OpenAI's Chat Completion API. This is where you specify the model, the messages (prompt), and any parameters like temperature. 
-    // This is supposed to be a simple JSON payload that the OpenAI API expects. 
+    // The Gemini API expects a specific JSON structure for the request body. 
     let body = serde_json::json!({
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     });
 
-    // Make the HTTP POST request to OpenAI's API. This is an asynchronous network call that will wait for the AI's response without blocking the main server thread.
-    match client.post("https://api.openai.com/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&body)
-        .send()
-        .await 
-    {
-        Ok(response) => {
-            // Parse the JSON response from OpenAI into our OpenAiResponse struct. This allows us to easily extract the AI's analysis from the response.
-            // The OpenAI API returns a structured JSON response that includes an array of "choices". Each choice contains a "message" with the AI's content.
-            // We take the first choice and extract the content for our analysis.
-            if let Ok(json) = response.json::<OpenAiResponse>().await {
-                if let Some(choice) = json.choices.first() {
-                    let analysis = &choice.message.content;
-                    
-                    // Save the AI's analysis to the database
-                    let _ = sqlx::query("INSERT INTO triage_reports (log_id, analysis) VALUES (?, ?)")
-                        .bind(log_id)
-                        .bind(analysis)
-                        .execute(&pool)
-                        .await;
+    // Make the POST request to the Gemini API. This is an asynchronous network call that will not block the main server thread.
+    // Pointing to the active 2.5 generation model
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
+        api_key
+    );
 
-                    println!(">> [AI Triage Complete] Saved analysis for Log ID: {}", log_id);
+    // Handle the response from the Gemini API. We need to parse the JSON response to extract the AI's analysis.
+    match client.post(&url).json(&body).send().await {
+        Ok(response) => {
+            let status = response.status();
+            
+            // Grab the raw text response from Google first
+            if let Ok(raw_text) = response.text().await {
+                
+                // Check if Google accepted the request (HTTP 200 OK)
+                if status.is_success() {
+                    // Try to parse the successful text into our Rust struct
+                    // If parsing fails, we log the error and the raw response for debugging. 
+                    match serde_json::from_str::<GeminiResponse>(&raw_text) {
+                        Ok(json) => {
+                            // Extract the AI's analysis from the parsed JSON. The structure of the response is based on the Gemini API's documentation. 
+                            // We navigate through the nested fields to get to the actual text content of the AI's response. 
+                            if let Some(candidate) = json.candidates.first() {
+                                if let Some(part) = candidate.content.parts.first() {
+                                    let analysis = &part.text;
+                                    
+                                    // Save the AI's analysis to the database and actually check for errors!
+                                    let db_result = sqlx::query("INSERT INTO triage_reports (log_id, analysis) VALUES (?, ?)")
+                                        .bind(log_id)
+                                        .bind(analysis)
+                                        .execute(&pool)
+                                        .await;
+                                        
+                                    match db_result {
+                                        Ok(_) => println!(">> [AI Triage Complete] Saved analysis for Log ID: {}", log_id),
+                                        Err(e) => println!(">> [CRITICAL DB ERROR] AI succeeded, but DB save failed: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => println!(">> [AI Worker Parse Error] Failed to parse: {}. Raw: {}", e, raw_text),
+                    }
+                } else {
+                    // If Google sent an error, print the EXACT reason
+                    println!(">> [AI Worker API Error] HTTP {}: {}", status, raw_text);
                 }
             }
         }

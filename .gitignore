@@ -3,3 +3,6 @@
 # Ignore SQLite database files
 *.db
 *.db-journal
+
+# Ignore environment variables
+.env
