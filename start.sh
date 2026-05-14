@@ -22,8 +22,14 @@ echo "⚙️ Starting Hardware Agent Simulation..."
 cargo run -p agent &
 AGENT_PID=$!
 
-# The Teardown Trap: Catches Ctrl+C and gracefully kills all background processes
-trap "echo -e '\n🛑 Shutting down TelemetRust...'; kill $FRONTEND_PID $SERVER_PID $AGENT_PID 2>/dev/null; exit" INT TERM EXIT
+# Define a clean teardown function
+cleanup() {
+    echo -e '\n🛑 Shutting down TelemetRust...'
+    kill $FRONTEND_PID $SERVER_PID $AGENT_PID 2>/dev/null
+}
+
+# Run the cleanup function ONLY when the script exits
+trap cleanup EXIT
 
 echo "✅ All systems running! Press Ctrl+C to safely shut down."
 

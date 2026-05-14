@@ -64,6 +64,19 @@ chmod +x start.sh
 
 Once running, navigate to `http://localhost:5173` in your browser to view the live Command Center. To gracefully shut down all microservices, simply press `Ctrl+C` in the terminal. There is also a dashboard that displays the raw JSON data: `http://127.0.0.1:8080/api/dashboard`
 
+### 🧰 Utility Scripts
+
+**Database Reset** During testing, the SQLite database will fill up with telemetry logs. To wipe the database and start fresh, use the included reset script:
+
+```bash
+# Make executable (first time only)
+chmod +x reset.sh
+
+# Wipe the database
+./reset.sh
+```
+*Note: The Axum Aggregator Server will automatically rebuild the empty database tables on its next boot.*
+
 ## 🛠️ Tech Stack Details
 
 * **Backend Environment:** Rust, Cargo Workspaces
