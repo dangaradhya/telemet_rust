@@ -1,4 +1,4 @@
 [INFO] System booted successfully.
-[WARN] Memory utilization approaching 85%.
-FATAL CRASH core dump initiated at memory address 0x00FF
-[ERROR] Battery cell temperature critical
+[WARN] Memory utilization approaching 90%.
+FATAL System overheating detected. 
+[ERROR] Failed to connect to database.

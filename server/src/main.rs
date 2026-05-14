@@ -1,3 +1,4 @@
+use tower_http::cors::{Any, CorsLayer};
 use axum::{
     extract::State,
     routing::{get, post},
@@ -101,10 +102,18 @@ async fn main() {
 
     println!("Database tables connected and schema verified.");
 
-    // 4. The Router with State along with the GET route for the Dashboard API
+    // 4. The Router with State along with the GET route for the Dashboard API and CORS
+    // Define the CORS rules (Allow any frontend to connect)
+    let cors = CorsLayer::new()
+    .allow_origin(Any)
+    .allow_methods(Any)
+    .allow_headers(Any);
+
+    // The Router defines the API endpoints and their corresponding handler functions.
     let app = Router::new()
         .route("/api/logs", post(ingest_log))
-        .route("/api/dashboard", get(fetch_logs)) 
+        .route("/api/dashboard", get(fetch_logs))
+        .layer(cors) // This opens the security gate
         .with_state(pool);
 
     // 5. Start the Server

@@ -1,0 +1,114 @@
+/* Global Styles - define color variables for the dark theme, and set the base styles for the body and text */
+:root {
+  --bg-dark: #0f1115;
+  --bg-panel: #1a1d24;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent-blue: #3b82f6;
+  --error-red: #ef4444;
+  --warn-yellow: #f59e0b;
+  --info-green: #10b981;
+}
+
+/* Reset and base styles - set the background, text color, and font for the entire app */
+body {
+  margin: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Dashboard Layout - a centered container with some padding to keep the content from touching the edges of the screen */
+.dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Header - a simple header with a title and some spacing */
+.header {
+  border-bottom: 1px solid #334155;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* Log Feed - take all the logs, stack them vertically, and add some spacing between them */
+.log-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Log Card - a card for each log entry, with a colored border indicating the log level, and a shadow for depth */
+.log-card {
+  background-color: var(--bg-panel);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  border-left: 4px solid var(--text-muted);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Log Card Variants - change the border color based on the log level (error, warn, info) */
+.log-card.error { border-left-color: var(--error-red); }
+.log-card.warn { border-left-color: var(--warn-yellow); }
+.log-card.info { border-left-color: var(--info-green); }
+
+/* Log Header - a header for each log entry, showing the timestamp and log level badge */
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+/* Log Level Badge - a small badge indicating the log level, with a background and color based on the log type */
+.badge {
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+}
+
+/* Badge Colors - set the text color of the badge based on the log level */
+.error .badge { color: var(--error-red); }
+.warn .badge { color: var(--warn-yellow); }
+.info .badge { color: var(--info-green); }
+
+/* Log Message - the main content of the log entry, with a slightly larger font size and some spacing */
+.log-message {
+  font-size: 1rem;
+  margin: 0.5rem 0;
+}
+
+/* Log Details - additional details for the log entry, such as stack traces or metadata, with a smaller font and muted color */
+.ai-triage-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+}
+
+.ai-triage-panel h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--accent-blue);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ai-triage-panel p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
