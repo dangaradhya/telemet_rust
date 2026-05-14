@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -35,6 +35,16 @@ struct GeminiContent {
 #[derive(Deserialize, Debug)]
 struct GeminiPart {
     text: String,
+}
+
+// For the Frontend UI Dashboard
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct LogResponse {
+    id: i64,
+    timestamp: String,
+    level: String,
+    message: String,
+    analysis: Option<String>, // Optional because not all logs will have an AI analysis (only ERROR logs do)
 }
 
 #[tokio::main]
@@ -91,19 +101,22 @@ async fn main() {
 
     println!("Database tables connected and schema verified.");
 
-    // 4. The Router with State
-    // `.with_state(pool)` safely injects our database pool into the Axum web framework
+    // 4. The Router with State along with the GET route for the Dashboard API
     let app = Router::new()
         .route("/api/logs", post(ingest_log))
+        .route("/api/dashboard", get(fetch_logs)) 
         .with_state(pool);
 
     // 5. Start the Server
     let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
-    println!("Listening for incoming telemetry on http://127.0.0.1:8080/api/logs\n");
+    println!("Listening for incoming telemetry on http://127.0.0.1:8080/api/logs");
+    println!("Dashboard API available at http://127.0.0.1:8080/api/dashboard\n");
     axum::serve(listener, app).await.unwrap();
 }
 
-// 6. The HTTP Handler for Ingesting Logs
+// --- API ENDPOINTS ---
+
+// 6. The POST Endpoint (Used by the Agent to send data)
 async fn ingest_log(
     State(pool): State<SqlitePool>,
     Json(payload): Json<LogPayload>,
@@ -144,7 +157,29 @@ async fn ingest_log(
     }
 }
 
-// 7. The Fire-and-Forget AI Worker 
+// 7. The GET Endpoint (Used by the UI Dashboard to read data)
+// The function takes the shared database pool as input and returns a JSON response containing a vector of LogResponse structs.
+async fn fetch_logs(State(pool): State<SqlitePool>) -> axum::Json<Vec<LogResponse>> {
+    // This SQL query joins the logs and triage_reports tables to fetch the latest 50 logs along with any AI analysis if it exists.
+    let records = sqlx::query_as::<_, LogResponse>(
+        "SELECT logs.id, logs.timestamp, logs.level, logs.message, triage_reports.analysis 
+         FROM logs 
+         LEFT JOIN triage_reports ON logs.id = triage_reports.log_id 
+         ORDER BY logs.id DESC 
+         LIMIT 50"
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    // Return the records as JSON to the frontend dashboard.
+    // The frontend can then display this data in a table, showing the original log message and the AI's analysis side by side.
+    axum::Json(records)
+}
+
+// --- BACKGROUND WORKERS ---
+
+// 8. The Fire-and-Forget AI Worker 
 async fn run_ai_triage(pool: SqlitePool, log_id: i64, error_message: String) {
     println!(">> [AI Worker Started] Triaging Log ID: {}", log_id);
 
@@ -170,9 +205,8 @@ async fn run_ai_triage(pool: SqlitePool, log_id: i64, error_message: String) {
     });
 
     // Make the POST request to the Gemini API. This is an asynchronous network call that will not block the main server thread.
-    // Pointing to the active 2.5 generation model
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={}",
         api_key
     );
 
