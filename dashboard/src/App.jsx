@@ -11,6 +11,7 @@ function App() {
   const [logs, setLogs] = useState([]); // Starts as an empty array []
   const [loading, setLoading] = useState(true); // Starts as true, so we can show a loading message
   const [connectionError, setConnectionError] = useState(null); // Stores any network errors
+  const [filter, setFilter] = useState('ALL'); // For filtering logs by level (e.g., ALL, ERROR, WARN, INFO)
 
   // 3. EFFECTS (Background Tasks)
   // useEffect runs the code inside it as soon as the dashboard loads on the screen.
@@ -66,6 +67,12 @@ function App() {
         <h1>TelemetRust Command Center</h1>
       </header>
 
+    {/* FILTER CONTROLS - These buttons update the 'filter' state variable, which we can use to conditionally show/hide logs based on their level. */}
+    <div className="filter-controls" style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
+      <button onClick={() => setFilter('ALL')} className={filter === 'ALL' ? 'active' : ''}>All Logs</button>
+      <button onClick={() => setFilter('ERROR')} className={filter === 'ERROR' ? 'active' : ''}>Errors Only</button>
+      </div>
+
       {/* CONDITIONAL RENDERING: Logical AND (&&) */}
       {/* If 'connectionError' has text in it, draw the red error box. If it's null, draw nothing. */}
       {connectionError && (
@@ -84,7 +91,10 @@ function App() {
           
           {/* MAPPING: Looping through arrays */}
           {/* We take our 'logs' array and use .map() to create a visual HTML card for every single item in the array. */}
-          {logs.map((log) => (
+          {logs
+            // Filter the logs based on the selected filter. If filter is 'ALL', show everything. Otherwise, only show logs that match the selected level (e.g., 'ERROR').
+            .filter(log => filter === 'ALL' || log.level === filter)  
+            .map((log) => (
             
             // Every item in a list needs a unique 'key' so React can track it efficiently if it moves or deletes.
             // We use template literals (`string ${variable}`) to dynamically inject the log.level (e.g., "error", "warn") as a CSS class name!

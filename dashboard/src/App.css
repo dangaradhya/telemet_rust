@@ -112,3 +112,26 @@ body {
   line-height: 1.5;
   color: #cbd5e1;
 }
+
+/* Filter Controls - a simple set of buttons to filter the logs by level, with styles for hover and active states */
+.filter-controls button {
+  padding: 0.5rem 1rem;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.filter-controls button:hover {
+  background: #334155;
+  color: var(--text-main);
+}
+
+.filter-controls button.active {
+  background: var(--accent-blue);
+  color: #ffffff;
+  border-color: var(--accent-blue);
+}
