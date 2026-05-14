@@ -27,13 +27,13 @@ The project is built as a monorepo consisting of three distinct microservices:
 ### Prerequisites
 * [Rust & Cargo](https://rustup.rs/)
 * [Node.js & npm](https://nodejs.org/)
-* A free [Google AI Studio API Key](https://aistudio.google.com/)
+* [Google AI Studio API Key](https://aistudio.google.com/)
 
 ### Installation & Setup
 
 **1. Clone the repository**
 ```bash
-git clone [https://github.com/yourusername/telemet_rust.git](https://github.com/yourusername/telemet_rust.git)
+git clone https://github.com/yourusername/telemet_rust.git
 cd telemet_rust
 ```
 
@@ -52,24 +52,17 @@ cd ..
 
 ### Running the System
 
-You can run the three microservices in separate terminal windows to observe the data flow:
+The project includes an orchestration script that handles process lifecycle management. You can boot the entire infrastructure (Agent, Server, and Dashboard) with a single command:
 
-**Terminal 1: Start the Backend Server**
 ```bash
-cargo run -p server
+# Make the script executable (first time only)
+chmod +x start.sh
+
+# Boot the system
+./start.sh
 ```
 
-**Terminal 2: Start the React Dashboard**
-```bash
-cd dashboard
-npm run dev
-# The UI will be available at http://localhost:5173
-```
-
-**Terminal 3: Start the Hardware Agent**
-```bash
-cargo run -p agent
-```
+Once running, navigate to `http://localhost:5173` in your browser to view the live Command Center. To gracefully shut down all microservices, simply press `Ctrl+C` in the terminal. There is also a dashboard that displays the raw JSON data: `http://127.0.0.1:8080/api/dashboard`
 
 ## 🛠️ Tech Stack Details
 
